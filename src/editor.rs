@@ -11,6 +11,7 @@ use termion::color;
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const QUIT_TIMES: u8 = 3;
 
 #[derive(Default)]
 pub struct Position {
@@ -38,6 +39,7 @@ pub struct Editor {
     offset: Position,
     document: Document,
     status_msg: StatusMessage,
+    quit_times: u8,
 }
 
 impl Editor {
@@ -63,6 +65,7 @@ impl Editor {
             cursor_position: Position::default(),
             offset: Position::default(),
             status_msg: StatusMessage::from(inital_status),
+            quit_times: QUIT_TIMES,
         }
     }
 
@@ -121,7 +124,16 @@ impl Editor {
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
-            Key::Ctrl('q') => self.quit = true,
+            Key::Ctrl('q') => {
+                if self.quit_times > 0 && self.document.is_dirty() {
+                    self.status_msg = StatusMessage::from(format!(
+                            "WARNING! Changies will be lost. Press Ctrl-q {} more times to quit", 
+                            self.quit_times));
+                    self.quit_times -= 1;
+                    return Ok(());
+                }
+                self.quit = true;
+            }
             Key::Ctrl('s') => self.save(),
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
@@ -145,6 +157,10 @@ impl Editor {
             _ => (),
         }
         self.scroll();
+        if self.quit_times < QUIT_TIMES {
+            self.quit_times = QUIT_TIMES;
+            self.status_msg = StatusMessage::from(String::new());
+        }
         Ok(())
     }
 
@@ -202,12 +218,17 @@ impl Editor {
     fn draw_status_bar(&self) {
         let mut status;
         let width = self.terminal.size().width as usize;
+        let mod_indicator = if self.document.is_dirty() {
+            " (modified)"
+        } else {
+            ""
+        };
         let mut file_name = "[Unnamed]".to_string();
         if let Some(name) = &self.document.name {
             file_name = name.clone();
             file_name.truncate(20);
         }
-        status = format!("{} - {} lines", file_name, self.document.len());
+        status = format!("{} - {} lines{}", file_name, self.document.len(), mod_indicator);
         let line_indicator = format!(
             "{}/{}",
             self.cursor_position.y.saturating_add(1),
