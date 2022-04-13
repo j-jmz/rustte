@@ -45,7 +45,8 @@ pub struct Editor {
 impl Editor {
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut inital_status = String::from("HELP: Ctrl-s = save | Ctrl-q = quit");
+        let mut inital_status = 
+            String::from("HELP: Ctrs-f = find | Ctrl-s = save | Ctrl-q = quit");
         let document = if let Some(file_name) = args.get(1) {
             let doc = Document::open(file_name);
             if let Ok(doc) = doc {
@@ -132,6 +133,15 @@ impl Editor {
                     return Ok(());
                 }
                 self.quit = true;
+            }
+            Key::Ctrl('f') => {
+                if let Some(query) = self.prompt("Search: ").unwrap_or(None) {
+                    if let Some(position) = self.document.find(&query[..]) {
+                        self.cursor_position = position;
+                    } else {
+                        self.status_msg = StatusMessage::from(format!("Not found :{}.",query));
+                    }
+                }
             }
             Key::Ctrl('s') => self.save(),
             Key::Char(c) => {
